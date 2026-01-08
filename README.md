@@ -99,7 +99,7 @@ sssea/
 ├── tests/                  # 单元测试
 ├── .env.example            # 环境变量模板
 ├── requirements.txt        # Python 依赖
-└── CLAUDE.md               # 本文档
+└── README.md               # 本文档
 ```
 
 ---
