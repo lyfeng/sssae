@@ -35,6 +35,24 @@ class Settings(BaseSettings):
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
+    # Reasoning Engine Configuration
+    reasoning_engine: str = Field(
+        default="roma",
+        alias="REASONING_ENGINE"
+    )  # Options: "roma", "openai", "mock"
+
+    # ROMA Configuration
+    roma_enabled: bool = Field(default=True, alias="ROMA_ENABLED")
+    roma_provider: str = Field(
+        default="openrouter",
+        alias="ROMA_PROVIDER"
+    )  # Options: "openrouter", "openai", "anthropic"
+    roma_model: str = Field(
+        default="openai/gpt-4o",
+        alias="ROMA_MODEL"
+    )
+    roma_api_key: str = Field(default="", alias="ROMA_API_KEY")
+
     # Web3 RPC Configuration
     mainnet_rpc_url: str = Field(
         default="https://eth.llamarpc.com",

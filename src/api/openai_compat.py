@@ -16,7 +16,12 @@ from pydantic import BaseModel, Field
 
 from ..simulation.models import SimulationRequest, SimulationResult
 from ..simulation.anvil_screener import AnvilScreener
-from ..reasoning.intent_analyzer import MockIntentAnalyzer
+from ..reasoning import (
+    MockIntentAnalyzer,
+    IntentAnalyzer,
+    ROMAIntentAnalyzer,
+    MockROMAAnalyzer,
+)
 from ..attestation.mock_quote import generate_attestation_metadata
 from ..config import get_settings
 
@@ -166,8 +171,51 @@ class SSSEAHandler:
 
     def __init__(self, settings: Optional[Any] = None):
         self.settings = settings or get_settings()
-        self.analyzer = MockIntentAnalyzer()
+        self.analyzer = self._create_analyzer()
         self._screener: Optional[AnvilScreener] = None
+
+    def _create_analyzer(self) -> Any:
+        """
+        根据配置创建推理分析器
+
+        支持的推理引擎：
+        - "roma": 使用 ROMA 递归推理框架
+        - "openai": 直接使用 OpenAI API
+        - "mock": 使用 Mock 分析器（测试用）
+        """
+        engine = self.settings.reasoning_engine.lower()
+
+        if engine == "roma":
+            # 尝试使用 ROMA
+            api_key = self.settings.roma_api_key or self.settings.openai_api_key
+            if api_key:
+                logger.info("Using ROMAIntentAnalyzer")
+                return ROMAIntentAnalyzer(
+                    api_key=api_key,
+                    base_url=self.settings.openai_base_url,
+                    model=self.settings.roma_model,
+                    provider=self.settings.roma_provider,
+                )
+            else:
+                logger.warning("ROMA API key not configured, using MockROMAAnalyzer")
+                return MockROMAAnalyzer()
+
+        elif engine == "openai":
+            # 使用传统 OpenAI
+            if self.settings.openai_api_key:
+                logger.info(f"Using IntentAnalyzer with model: {self.settings.openai_model}")
+                return IntentAnalyzer(
+                    api_key=self.settings.openai_api_key,
+                    base_url=self.settings.openai_base_url,
+                    model=self.settings.openai_model,
+                )
+            else:
+                logger.warning("OpenAI API key not configured, using MockIntentAnalyzer")
+                return MockIntentAnalyzer()
+
+        else:  # engine == "mock" or unknown
+            logger.info("Using MockROMAAnalyzer for testing")
+            return MockROMAAnalyzer()
 
     async def handle_chat_completion(
         self,

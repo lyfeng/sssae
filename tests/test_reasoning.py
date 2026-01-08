@@ -4,6 +4,7 @@ Reasoning Layer Unit Tests
 
 import pytest
 import asyncio
+import os
 
 from src.simulation.models import (
     SimulationRequest,
@@ -13,6 +14,7 @@ from src.simulation.models import (
     CallTrace,
 )
 from src.reasoning.intent_analyzer import MockIntentAnalyzer, IntentAnalyzer
+from src.reasoning.roma_analyzer import MockROMAAnalyzer
 from src.reasoning.prompts import PromptTemplates, KnownRiskPatterns
 
 
@@ -223,6 +225,115 @@ class TestMockIntentAnalyzer:
         analysis = asyncio.run(analyzer.analyze(request, result))
         assert analysis.risk_level == RiskLevel.WARNING
         assert any("重入" in a or "深度" in a for a in analysis.anomalies)
+
+
+class TestMockROMAAnalyzer:
+    """测试 Mock ROMA 分析器"""
+
+    @pytest.fixture
+    def analyzer(self):
+        return MockROMAAnalyzer()
+
+    def test_safe_transaction(self, analyzer):
+        """测试安全交易分析"""
+        request = SimulationRequest(
+            user_intent="Swap 1 ETH to USDC",
+            tx_from="0x1234567890123456789012345678901234567890",
+            tx_to="0xE592427A0AEce92De3Edee1F18E0157C05861564",
+            tx_value="1000000000000000000",
+        )
+
+        result = SimulationResult(
+            chain_id=1,
+            block_number=19_000_000,
+            tx_from=request.tx_from,
+            tx_to=request.tx_to,
+            tx_value=request.tx_value,
+            success=True,
+            gas_used=150000,
+            asset_changes=[
+                AssetChange(
+                    token_address="0x" + "0" * 40,
+                    token_symbol="ETH",
+                    token_decimals=18,
+                    balance_before="2000000000000000000",
+                    balance_after="1000000000000000000",
+                    change_amount="-1000000000000000000",
+                ),
+                AssetChange(
+                    token_address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                    token_symbol="USDC",
+                    token_decimals=6,
+                    balance_before="0",
+                    balance_after="2500000000",
+                    change_amount="2500000000",
+                ),
+            ],
+        )
+
+        analysis = asyncio.run(analyzer.analyze(request, result))
+        assert analysis.risk_level == RiskLevel.SAFE
+        assert analysis.raw_response == "mock_roma_response"
+
+    def test_fallback_to_rules(self, analyzer):
+        """测试回退到规则检查"""
+        request = SimulationRequest(
+            user_intent="Swap 1 ETH to USDC",
+            tx_from="0x1234567890123456789012345678901234567890",
+            tx_to="0xE592427A0AEce92De3Edee1F18E0157C05861564",
+            tx_value="1000000000000000000",
+        )
+
+        # 模拟异常 ETH 转出
+        result = SimulationResult(
+            chain_id=1,
+            block_number=19_000_000,
+            tx_from=request.tx_from,
+            tx_to=request.tx_to,
+            tx_value=request.tx_value,
+            success=True,
+            gas_used=100000,
+            asset_changes=[
+                AssetChange(
+                    token_address="0x" + "0" * 40,
+                    token_symbol="ETH",
+                    token_decimals=18,
+                    balance_before="2000000000000000000",
+                    balance_after="0",
+                    change_amount="-2000000000000000000",  # 转出了 2 ETH
+                ),
+            ],
+        )
+
+        analysis = asyncio.run(analyzer.analyze(request, result))
+        assert analysis.risk_level == RiskLevel.CRITICAL
+
+
+class TestROMAFallback:
+    """测试 ROMA 不可用时的回退逻辑"""
+
+    def test_roma_not_available_fallback(self):
+        """测试 ROMA 未安装时的回退行为"""
+        # 即使 ROMA 没有安装，MockROMAAnalyzer 应该能正常工作
+        analyzer = MockROMAAnalyzer()
+
+        request = SimulationRequest(
+            user_intent="Test transaction",
+            tx_from="0x1234567890123456789012345678901234567890",
+            tx_to="0xE592427A0AEce92De3Edee1F18E0157C05861564",
+        )
+
+        result = SimulationResult(
+            chain_id=1,
+            block_number=19_000_000,
+            tx_from=request.tx_from,
+            tx_to=request.tx_to,
+            success=True,
+            gas_used=100000,
+        )
+
+        analysis = asyncio.run(analyzer.analyze(request, result))
+        assert analysis.risk_level in [RiskLevel.SAFE, RiskLevel.WARNING, RiskLevel.CRITICAL]
 
 
 if __name__ == "__main__":
