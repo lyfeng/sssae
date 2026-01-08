@@ -9,11 +9,12 @@ import base64
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from datetime import UTC, datetime
+from typing import Any
+
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.backends import default_backend
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class OMLAttestationQuote:
         self.tee_fingerprint = tee_fingerprint
         self.timestamp = timestamp
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return {
             "version": "OML_1.0",
@@ -63,7 +64,7 @@ class OMLAttestationQuote:
     @classmethod
     def from_simulation_result(
         cls,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         tee_fingerprint: str,
     ) -> "OMLAttestationQuote":
         """
@@ -74,16 +75,14 @@ class OMLAttestationQuote:
             tee_fingerprint: TEE 硬件指纹
         """
         # 计算 PCR0（基于模拟结果的 hash）
-        result_hash = hashlib.sha256(
-            json.dumps(result, sort_keys=True).encode()
-        ).hexdigest()
+        result_hash = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
 
         return cls(
             pcr0=result_hash[:64],  # 模拟结果 hash
             pcr1="0" * 64,  # 配置 hash（mock）
             user_data=json.dumps({"risk_level": result.get("risk_level", "SAFE")}),
             tee_fingerprint=tee_fingerprint,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
 
@@ -104,7 +103,7 @@ class MockAttestationProvider:
     MOCK_PCR0 = "a1b2c3d4e5f6" * 8  # 64 字符
     MOCK_PCR1 = "f6e5d4c3b2a1" * 8  # 64 字符
 
-    def __init__(self, tee_fingerprint: Optional[str] = None):
+    def __init__(self, tee_fingerprint: str | None = None):
         """
         初始化 Mock 证明提供者
 
@@ -124,7 +123,7 @@ class MockAttestationProvider:
 
     def generate_attestation(
         self,
-        simulation_result: Dict[str, Any],
+        simulation_result: dict[str, Any],
     ) -> OMLAttestationQuote:
         """
         生成 OML 证明
@@ -159,8 +158,8 @@ class MockAttestationProvider:
 
     def generate_full_attestation(
         self,
-        simulation_result: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        simulation_result: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         生成完整的证明数据（包含签名）
 
@@ -225,7 +224,7 @@ class SystemFingerprint:
     def generate(
         model_name: str,
         tee_fingerprint: str,
-        additional_info: Optional[Dict[str, Any]] = None,
+        additional_info: dict[str, Any] | None = None,
     ) -> str:
         """
         生成系统指纹
@@ -237,13 +236,11 @@ class SystemFingerprint:
             "tee": tee_fingerprint[:8],
             **(additional_info or {}),
         }
-        hash_part = hashlib.sha256(
-            json.dumps(info, sort_keys=True).encode()
-        ).hexdigest()[:8]
+        hash_part = hashlib.sha256(json.dumps(info, sort_keys=True).encode()).hexdigest()[:8]
         return f"{model_name}@{tee_fingerprint[:8]}_{hash_part}"
 
     @staticmethod
-    def parse(fingerprint: str) -> Dict[str, str]:
+    def parse(fingerprint: str) -> dict[str, str]:
         """
         解析系统指纹
         """
@@ -258,11 +255,11 @@ class SystemFingerprint:
 
 
 # 全局 Mock 证明提供者实例
-_mock_provider: Optional[MockAttestationProvider] = None
+_mock_provider: MockAttestationProvider | None = None
 
 
 def get_attestation_provider(
-    tee_fingerprint: Optional[str] = None,
+    tee_fingerprint: str | None = None,
 ) -> MockAttestationProvider:
     """获取全局证明提供者实例"""
     global _mock_provider
@@ -272,9 +269,9 @@ def get_attestation_provider(
 
 
 def generate_attestation_metadata(
-    simulation_result: Dict[str, Any],
+    simulation_result: dict[str, Any],
     model_name: str = "sssea-v1-mock",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     生成用于 API 响应的 attestation 元数据
 

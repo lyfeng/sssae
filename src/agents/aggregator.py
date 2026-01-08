@@ -5,10 +5,10 @@ Aggregator Agent - 聚合层Agent
 """
 
 import logging
-from typing import Any, Dict, List, Optional
 from datetime import datetime
-from .base import BaseAgent, AgentResult, AgentContext
+from typing import Any
 
+from .base import AgentContext, AgentResult, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +52,15 @@ class AggregatorAgent(BaseAgent):
 
             # 5. 构建最终报告
             final_report = await self._build_final_report(
-                context,
-                all_results,
-                security_assessment,
-                explainability_report,
-                recommendations
+                context, all_results, security_assessment, explainability_report, recommendations
             )
 
             return AgentResult(
+                agent_name=self.agent_name,
                 success=True,
                 execution_time=0.0,
                 data=final_report,
+                error=None,
                 next_step=None,  # 最终步骤
                 confidence=security_assessment.get("confidence", 0.7),
             )
@@ -70,13 +68,15 @@ class AggregatorAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Aggregator Agent执行失败: {e}", exc_info=True)
             return AgentResult(
+                agent_name=self.agent_name,
                 success=False,
                 execution_time=0.0,
                 error=f"结果聚合失败: {str(e)}",
+                next_step=None,
                 confidence=0.0,
             )
 
-    async def _collect_results(self, context: AgentContext) -> Dict[str, Any]:
+    async def _collect_results(self, context: AgentContext) -> dict[str, Any]:
         """收集所有Agent结果"""
         return {
             "perception": context.metadata.get("intent_analysis"),
@@ -87,10 +87,8 @@ class AggregatorAgent(BaseAgent):
         }
 
     async def _generate_security_assessment(
-        self,
-        context: AgentContext,
-        results: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, results: dict[str, Any]
+    ) -> dict[str, Any]:
         """生成安全评估"""
         assessment = {
             "risk_level": "SAFE",
@@ -113,8 +111,7 @@ class AggregatorAgent(BaseAgent):
             attack_detection = sim_result.get("data", {})
             if isinstance(attack_detection, dict) and attack_detection.get("risk_score"):
                 assessment["risk_score"] = max(
-                    assessment["risk_score"],
-                    attack_detection.get("risk_score", 0)
+                    assessment["risk_score"], attack_detection.get("risk_score", 0)
                 )
                 if attack_detection.get("risk_score", 0) > 0.7:
                     assessment["risk_level"] = "CRITICAL"
@@ -131,10 +128,8 @@ class AggregatorAgent(BaseAgent):
         return assessment
 
     async def _create_explainability_report(
-        self,
-        context: AgentContext,
-        results: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, results: dict[str, Any]
+    ) -> dict[str, Any]:
         """创建可解释性报告"""
         report = {
             "execution_summary": self._generate_execution_summary(results),
@@ -151,24 +146,28 @@ class AggregatorAgent(BaseAgent):
             # 资产变动证据
             asset_changes = data.get("asset_changes", [])
             if asset_changes:
-                report["evidence"].append({
-                    "type": "asset_changes",
-                    "description": f"检测到 {len(asset_changes)} 项资产变动",
-                    "details": asset_changes[:5],
-                })
+                report["evidence"].append(
+                    {
+                        "type": "asset_changes",
+                        "description": f"检测到 {len(asset_changes)} 项资产变动",
+                        "details": asset_changes[:5],
+                    }
+                )
 
             # 调用链证据
             call_traces = data.get("call_traces", [])
             if call_traces:
-                report["evidence"].append({
-                    "type": "call_chain",
-                    "description": f"交易包含 {len(call_traces)} 个合约调用",
-                    "max_depth": max((t.get("depth", 0) for t in call_traces), default=0),
-                })
+                report["evidence"].append(
+                    {
+                        "type": "call_chain",
+                        "description": f"交易包含 {len(call_traces)} 个合约调用",
+                        "max_depth": max((t.get("depth", 0) for t in call_traces), default=0),
+                    }
+                )
 
         return report
 
-    def _generate_execution_summary(self, results: Dict[str, Any]) -> str:
+    def _generate_execution_summary(self, results: dict[str, Any]) -> str:
         """生成执行摘要"""
         steps = results.get("execution_history", [])
         sim_result = results.get("simulation", {})
@@ -185,10 +184,8 @@ class AggregatorAgent(BaseAgent):
         return "; ".join(summary_parts)
 
     async def _generate_recommendations(
-        self,
-        context: AgentContext,
-        assessment: Dict[str, Any]
-    ) -> List[str]:
+        self, context: AgentContext, assessment: dict[str, Any]
+    ) -> list[str]:
         """生成推荐操作"""
         recommendations = []
 
@@ -224,11 +221,11 @@ class AggregatorAgent(BaseAgent):
     async def _build_final_report(
         self,
         context: AgentContext,
-        results: Dict[str, Any],
-        assessment: Dict[str, Any],
-        explainability: Dict[str, Any],
-        recommendations: List[str]
-    ) -> Dict[str, Any]:
+        results: dict[str, Any],
+        assessment: dict[str, Any],
+        explainability: dict[str, Any],
+        recommendations: list[str],
+    ) -> dict[str, Any]:
         """构建最终报告"""
         return {
             "timestamp": datetime.utcnow().isoformat(),
@@ -249,7 +246,7 @@ class AggregatorAgent(BaseAgent):
             "transaction_info": self._extract_transaction_info(context),
         }
 
-    def _generate_summary(self, assessment: Dict[str, Any], context: AgentContext) -> str:
+    def _generate_summary(self, assessment: dict[str, Any], context: AgentContext) -> str:
         """生成摘要"""
         risk_level = assessment["risk_level"]
         confidence = assessment["confidence"]
@@ -262,7 +259,7 @@ class AggregatorAgent(BaseAgent):
 
         return summaries.get(risk_level, "评估完成")
 
-    def _extract_transaction_info(self, context: AgentContext) -> Dict[str, Any]:
+    def _extract_transaction_info(self, context: AgentContext) -> dict[str, Any]:
         """提取交易信息"""
         key_params = context.metadata.get("key_params", {})
         return {

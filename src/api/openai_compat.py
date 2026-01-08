@@ -9,15 +9,13 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..attestation.mock_quote import generate_attestation_metadata
 from ..config import get_settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -29,20 +27,23 @@ logger = logging.getLogger(__name__)
 
 class ChatMessage(BaseModel):
     """Chat 消息"""
+
     role: str
     content: str
-    name: Optional[str] = None
-    tool_calls: Optional[List[Any]] = None
+    name: str | None = None
+    tool_calls: list[Any] | None = None
 
 
 class ToolFunction(BaseModel):
     """Tool 函数定义"""
+
     name: str
     arguments: str  # JSON string
 
 
 class ToolCall(BaseModel):
     """Tool 调用"""
+
     id: str
     type: str = "function"
     function: ToolFunction
@@ -50,29 +51,33 @@ class ToolCall(BaseModel):
 
 class Tool(BaseModel):
     """Tool 定义"""
+
     type: str = "function"
-    function: Dict[str, Any]
+    function: dict[str, Any]
 
 
 class ToolChoice(BaseModel):
     """Tool 选择"""
+
     type: str = "function"
-    function: Dict[str, str]
+    function: dict[str, str]
 
 
 class ChatCompletionRequest(BaseModel):
     """Chat Completion 请求"""
+
     model: str
-    messages: List[ChatMessage]
-    tools: Optional[List[Tool]] = None
-    tool_choice: Optional[str | ToolChoice] = "auto"
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = None
-    stream: Optional[bool] = False
+    messages: list[ChatMessage]
+    tools: list[Tool] | None = None
+    tool_choice: str | ToolChoice | None = "auto"
+    temperature: float | None = 0.7
+    max_tokens: int | None = None
+    stream: bool | None = False
 
 
 class Usage(BaseModel):
     """Token 使用统计"""
+
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
@@ -80,16 +85,17 @@ class Usage(BaseModel):
 
 class ChatCompletionResponse(BaseModel):
     """Chat Completion 响应"""
+
     id: str
     object: str = "chat.completion"
     created: int
     model: str
-    choices: List[Dict[str, Any]]
+    choices: list[dict[str, Any]]
     usage: Usage
-    system_fingerprint: Optional[str] = None
+    system_fingerprint: str | None = None
 
     # SSSEA 扩展字段
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 # =============================================================================
@@ -146,6 +152,7 @@ SIMULATE_TX_TOOL = {
 # API Handler
 # =============================================================================
 
+
 class SSSEAHandler:
     """
     SSSEA API 处理器
@@ -153,7 +160,7 @@ class SSSEAHandler:
     使用 ROMA Pipeline 进行完整的递归推理分析。
     """
 
-    def __init__(self, settings: Optional[Any] = None):
+    def __init__(self, settings: Any | None = None):
         self.settings = settings or get_settings()
         self._roma_pipeline = None
         self._initialize_pipeline()
@@ -191,10 +198,7 @@ class SSSEAHandler:
             ChatCompletionResponse: 响应
         """
         # 检查是否请求了 simulate_tx 工具
-        if request.tools and any(
-            t.function.get("name") == "simulate_tx"
-            for t in request.tools
-        ):
+        if request.tools and any(t.function.get("name") == "simulate_tx" for t in request.tools):
             return await self._handle_simulation(request)
 
         # 返回普通聊天响应
@@ -215,11 +219,13 @@ class SSSEAHandler:
         self,
         request: ChatCompletionRequest,
         intent: str,
-        tx_params: Dict[str, Any],
+        tx_params: dict[str, Any],
     ) -> ChatCompletionResponse:
         """使用ROMA Pipeline处理请求"""
         try:
             # 运行ROMA Pipeline
+            if self._roma_pipeline is None:
+                raise RuntimeError("ROMA Pipeline is not initialized")
             result = await self._roma_pipeline.run(
                 user_intent=intent,
                 tx_data=tx_params,
@@ -230,17 +236,14 @@ class SSSEAHandler:
 
         except Exception as e:
             logger.error(f"ROMA Pipeline执行失败: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"模拟执行失败: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"模拟执行失败: {str(e)}")
 
     def _build_response(
         self,
         request: ChatCompletionRequest,
         intent: str,
-        tx_params: Dict[str, Any],
-        result: Dict[str, Any],
+        tx_params: dict[str, Any],
+        result: dict[str, Any],
     ) -> ChatCompletionResponse:
         """构建响应"""
         verdict = result.get("verdict", {})
@@ -262,22 +265,26 @@ class SSSEAHandler:
             id=f"chatcmpl-{uuid.uuid4().hex[:28]}",
             created=int(time.time()),
             model=request.model,
-            choices=[{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": content,
-                    "tool_calls": [{
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": "simulate_tx",
-                            "arguments": json.dumps(tx_params),
-                        },
-                    }],
-                },
-                "finish_reason": "tool_calls",
-            }],
+            choices=[
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": [
+                            {
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": "simulate_tx",
+                                    "arguments": json.dumps(tx_params),
+                                },
+                            }
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
             usage=Usage(
                 prompt_tokens=100,
                 completion_tokens=len(content) // 4,
@@ -293,7 +300,7 @@ class SSSEAHandler:
             },
         )
 
-    def _format_result_message(self, result: Dict[str, Any]) -> str:
+    def _format_result_message(self, result: dict[str, Any]) -> str:
         """格式化结果消息"""
         verdict = result.get("verdict", {})
         risk_level = verdict.get("risk_level", "UNKNOWN")
@@ -333,17 +340,19 @@ class SSSEAHandler:
             id=f"chatcmpl-{uuid.uuid4().hex[:28]}",
             created=int(time.time()),
             model=request.model,
-            choices=[{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": (
-                        "我是 SSSEA 安全审计 Agent，基于 ROMA 框架进行递归推理分析。"
-                        "请使用 simulate_tx 工具来审计 Web3 交易。"
-                    ),
-                },
-                "finish_reason": "stop",
-            }],
+            choices=[
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": (
+                            "我是 SSSEA 安全审计 Agent，基于 ROMA 框架进行递归推理分析。"
+                            "请使用 simulate_tx 工具来审计 Web3 交易。"
+                        ),
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
             usage=Usage(
                 prompt_tokens=10,
                 completion_tokens=25,
@@ -357,7 +366,7 @@ class SSSEAHandler:
     def _extract_transaction_params(
         self,
         request: ChatCompletionRequest,
-    ) -> tuple[str, Dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any]]:
         """
         从请求中提取交易参数
 
@@ -397,26 +406,29 @@ class SSSEAHandler:
 # Helper Functions
 # =============================================================================
 
+
 def create_chat_completion_response(
     model: str,
     content: str,
-    tool_calls: Optional[List[Dict[str, Any]]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ChatCompletionResponse:
     """创建 Chat Completion 响应的便捷函数"""
     return ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:28]}",
         created=int(time.time()),
         model=model,
-        choices=[{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": content,
-                **({"tool_calls": tool_calls} if tool_calls else {}),
-            },
-            "finish_reason": "tool_calls" if tool_calls else "stop",
-        }],
+        choices=[
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                    **({"tool_calls": tool_calls} if tool_calls else {}),
+                },
+                "finish_reason": "tool_calls" if tool_calls else "stop",
+            }
+        ],
         usage=Usage(
             prompt_tokens=0,
             completion_tokens=0,

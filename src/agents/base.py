@@ -7,31 +7,32 @@ Base Agent Interface for ROMA
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import Any
 
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 
 class AgentContext(BaseModel):
     """Agent执行上下文"""
+
     # 输入数据
     user_intent: str = Field(..., description="用户意图")
-    tx_data: Dict[str, Any] = Field(default_factory=dict, description="交易数据")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    tx_data: dict[str, Any] = Field(default_factory=dict, description="交易数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
 
     # 执行状态
     current_step: str = "perception"
-    step_history: List[str] = Field(default_factory=list, description="执行历史")
+    step_history: list[str] = Field(default_factory=list, description="执行历史")
 
     # 中间结果
-    simulation_result: Optional[Dict[str, Any]] = None
-    analysis_result: Optional[Dict[str, Any]] = None
+    simulation_result: dict[str, Any] | None = None
+    analysis_result: dict[str, Any] | None = None
 
     # 配置
-    config: Dict[str, Any] = Field(default_factory=dict, description="Agent配置")
+    config: dict[str, Any] = Field(default_factory=dict, description="Agent配置")
 
     def add_history(self, step: str) -> None:
         """添加执行历史"""
@@ -41,16 +42,17 @@ class AgentContext(BaseModel):
 
 class AgentResult(BaseModel):
     """Agent执行结果"""
+
     agent_name: str = Field(..., description="Agent名称")
     success: bool = Field(..., description="执行是否成功")
     execution_time: float = Field(..., description="执行时间（秒）")
-    data: Dict[str, Any] = Field(default_factory=dict, description="返回数据")
-    error: Optional[str] = Field(None, description="错误信息")
-    next_step: Optional[str] = Field(None, description="下一步建议")
+    data: dict[str, Any] = Field(default_factory=dict, description="返回数据")
+    error: str | None = Field(None, description="错误信息")
+    next_step: str | None = Field(None, description="下一步建议")
     confidence: float = Field(1.0, description="结果置信度")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="执行时间戳")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式"""
         return self.model_dump()
 
@@ -65,7 +67,9 @@ class BaseAgent(ABC):
     agent_name: str = "base_agent"
     description: str = "Base agent for ROMA"
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, toolkits: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, config: dict[str, Any] | None = None, toolkits: dict[str, Any] | None = None
+    ):
         """
         初始化Agent
 
@@ -106,11 +110,7 @@ class BaseAgent(ABC):
         """
         return context
 
-    async def post_process(
-        self,
-        context: AgentContext,
-        result: AgentResult
-    ) -> AgentResult:
+    async def post_process(self, context: AgentContext, result: AgentResult) -> AgentResult:
         """
         执行后处理
 
@@ -145,7 +145,7 @@ class BaseAgent(ABC):
 
         return result
 
-    def get_toolkit(self, name: str) -> Optional[Any]:
+    def get_toolkit(self, name: str) -> Any | None:
         """获取指定的工具"""
         return self.toolkits.get(name)
 

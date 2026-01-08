@@ -9,15 +9,15 @@ SSSEA Environment Check Script
 4. 必要的 Python 包
 """
 
-import sys
-import subprocess
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
-from typing import Tuple, List
 
 
 class Colors:
     """终端颜色输出"""
+
     GREEN = "\033[92m"
     RED = "\033[91m"
     YELLOW = "\033[93m"
@@ -42,7 +42,7 @@ def print_warning(text: str) -> None:
     print(f"{Colors.YELLOW}⚠ {text}{Colors.RESET}")
 
 
-def check_python_version() -> Tuple[bool, str]:
+def check_python_version() -> tuple[bool, str]:
     """检查 Python 版本"""
     version = sys.version_info
     if version >= (3, 12):
@@ -50,23 +50,15 @@ def check_python_version() -> Tuple[bool, str]:
     return False, f"Python {version.major}.{version.minor}.{version.micro} (需要 >= 3.12)"
 
 
-def check_command_exists(command: str) -> Tuple[bool, str]:
+def check_command_exists(command: str) -> tuple[bool, str]:
     """检查命令是否存在"""
     try:
-        result = subprocess.run(
-            ["which", command],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        result = subprocess.run(["which", command], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             # 获取版本信息
             try:
                 version_result = subprocess.run(
-                    [command, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+                    [command, "--version"], capture_output=True, text=True, timeout=5
                 )
                 version = version_result.stdout.strip().split("\n")[0]
                 return True, f"{command}: {version}"
@@ -77,7 +69,7 @@ def check_command_exists(command: str) -> Tuple[bool, str]:
         return False, f"{command}: 检查失败"
 
 
-def check_python_package(package: str, import_name: str = None) -> Tuple[bool, str]:
+def check_python_package(package: str, import_name: str = None) -> tuple[bool, str]:
     """检查 Python 包是否已安装"""
     if import_name is None:
         import_name = package
@@ -93,14 +85,15 @@ def check_python_package(package: str, import_name: str = None) -> Tuple[bool, s
     return False, f"{package}: 未安装"
 
 
-def check_rpc_connectivity(rpc_url: str) -> Tuple[bool, str]:
+def check_rpc_connectivity(rpc_url: str) -> tuple[bool, str]:
     """检查 RPC 连接性"""
     try:
         import httpx
+
         response = httpx.post(
             rpc_url,
             json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1},
-            timeout=10
+            timeout=10,
         )
         if response.status_code == 200:
             data = response.json()
@@ -120,7 +113,7 @@ def main():
     print()
 
     all_passed = True
-    results: List[Tuple[bool, str]] = []
+    results: list[tuple[bool, str]] = []
 
     # 1. 检查 Python 版本
     print_header("1. Python 版本检查")

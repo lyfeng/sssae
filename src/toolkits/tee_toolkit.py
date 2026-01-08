@@ -8,12 +8,11 @@ TEEToolkit - 可信执行环境工具集
 import logging
 import subprocess
 import tempfile
-from typing import Any, Dict, Optional
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .base import BaseToolkit, ToolkitResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +38,14 @@ class TEEToolkit(BaseToolkit):
         """初始化TEE配置"""
         self.backend = self.config.get("backend", "docker-sim")  # docker-sim, nitro, sgx
         self.tee_image = self.config.get("tee_image", "sssea/tee-sim:latest")
-        self.enclave_id: Optional[str] = None
+        self.enclave_id: str | None = None
         self.nitro_cli_path = self.config.get("nitro_cli_path", "nitro-cli")
         self.attestation_enabled = self.config.get("attestation_enabled", True)
 
         # 密钥管理
-        self._ephemeral_keys: Dict[str, str] = {}
+        self._ephemeral_keys: dict[str, str] = {}
 
-    async def validate_input(self, **kwargs) -> tuple[bool, Optional[str]]:
+    async def validate_input(self, **kwargs) -> tuple[bool, str | None]:
         """验证输入参数"""
         action = kwargs.get("action")
         if action == "create_enclave":
@@ -88,10 +87,7 @@ class TEEToolkit(BaseToolkit):
         return await handler(**kwargs)
 
     async def _handle_create_enclave(
-        self,
-        memory: int = 512,
-        cpus: int = 2,
-        **kwargs
+        self, memory: int = 512, cpus: int = 2, **kwargs
     ) -> ToolkitResult:
         """
         创建TEE enclave
@@ -128,16 +124,25 @@ class TEEToolkit(BaseToolkit):
             container_name = f"sssea-tee-{datetime.utcnow().timestamp()}"
 
             cmd = [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "--memory", f"{memory}m",
-                "--cpus", str(cpus),
-                "--security-opt", "no-new-privileges",
-                "--cap-drop", "ALL",
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                container_name,
+                "--memory",
+                f"{memory}m",
+                "--cpus",
+                str(cpus),
+                "--security-opt",
+                "no-new-privileges",
+                "--cap-drop",
+                "ALL",
                 "--read-only",
-                "-e", "TEE_SIMULATION=true",
+                "-e",
+                "TEE_SIMULATION=true",
                 self.tee_image,
-                "sleep", "infinity",
+                "sleep",
+                "infinity",
             ]
 
             result = subprocess.run(
@@ -166,6 +171,7 @@ class TEEToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "enclave_id": container_name,
                     "backend": "docker-sim",
@@ -186,6 +192,7 @@ class TEEToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error="创建enclave超时",
+                data={},
             )
         except Exception as e:
             return ToolkitResult(
@@ -193,6 +200,7 @@ class TEEToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
     async def _create_nitro_enclave(
@@ -229,6 +237,7 @@ class TEEToolkit(BaseToolkit):
                 delete=False,
             ) as f:
                 import json
+
                 json.dump(config, f)
                 config_file = f.name
 
@@ -237,9 +246,12 @@ class TEEToolkit(BaseToolkit):
                 [
                     self.nitro_cli_path,
                     "run-enclave",
-                    "--cpu-count", str(cpus),
-                    "--memory", str(memory),
-                    "--enclave-name", f"sssea-{datetime.utcnow().timestamp()}",
+                    "--cpu-count",
+                    str(cpus),
+                    "--memory",
+                    str(memory),
+                    "--enclave-name",
+                    f"sssea-{datetime.utcnow().timestamp()}",
                 ],
                 capture_output=True,
                 text=True,
@@ -258,6 +270,7 @@ class TEEToolkit(BaseToolkit):
 
             # 解析enclave ID
             import json
+
             output = json.loads(result.stdout)
             self.enclave_id = output.get("EnclaveID")
 
@@ -265,6 +278,7 @@ class TEEToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "enclave_id": self.enclave_id,
                     "backend": "nitro",
@@ -280,6 +294,7 @@ class TEEToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
     async def _create_sgx_enclave(
@@ -303,6 +318,7 @@ class TEEToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={"status": "no_enclave"},
             )
 
@@ -328,6 +344,7 @@ class TEEToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "status": "destroyed",
                     "enclave_id": old_id,
@@ -340,13 +357,11 @@ class TEEToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
     async def _handle_generate_key(
-        self,
-        key_type: str = "ephemeral",
-        scope: str = "transaction",
-        **kwargs
+        self, key_type: str = "ephemeral", scope: str = "transaction", **kwargs
     ) -> ToolkitResult:
         """
         生成临时密钥
@@ -372,6 +387,7 @@ class TEEToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "key_id": key_id,
                 "key_type": key_type,
@@ -392,6 +408,7 @@ class TEEToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error="没有运行的enclave",
+                data={},
             )
 
         attestation = await self._generate_mock_attestation(self.enclave_id)
@@ -400,6 +417,7 @@ class TEEToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "attestation": attestation,
                 "enclave_id": self.enclave_id,
@@ -413,6 +431,7 @@ class TEEToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "status": "not_initialized",
                     "enclave_id": None,
@@ -434,6 +453,7 @@ class TEEToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "status": "running" if is_running else "stopped",
                 "enclave_id": self.enclave_id,
@@ -442,17 +462,19 @@ class TEEToolkit(BaseToolkit):
             },
         )
 
-    async def _generate_mock_attestation(self, enclave_id: str) -> Dict[str, Any]:
+    async def _generate_mock_attestation(self, enclave_id: str) -> dict[str, Any]:
         """生成模拟的TEE证明"""
         import hashlib
         import json
 
         # 计算enclave hash
-        enclave_data = json.dumps({
-            "id": enclave_id,
-            "backend": self.backend,
-            "timestamp": datetime.utcnow().isoformat(),
-        }).encode()
+        enclave_data = json.dumps(
+            {
+                "id": enclave_id,
+                "backend": self.backend,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        ).encode()
         hash_value = hashlib.sha256(enclave_data).hexdigest()
 
         return {
@@ -464,7 +486,7 @@ class TEEToolkit(BaseToolkit):
             "timestamp": datetime.utcnow().isoformat(),
         }
 
-    def get_schema(self) -> Dict[str, Any]:
+    def get_schema(self) -> dict[str, Any]:
         """获取工具Schema"""
         return {
             "name": self.tool_name,
@@ -479,7 +501,7 @@ class TEEToolkit(BaseToolkit):
                             "destroy_enclave",
                             "generate_key",
                             "get_attestation",
-                            "status"
+                            "status",
                         ],
                         "description": "操作类型",
                     },

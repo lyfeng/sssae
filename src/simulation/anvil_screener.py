@@ -6,29 +6,21 @@ AnvilScreener - 核心模拟引擎
 """
 
 import asyncio
-import json
 import logging
-import os
-import re
 import socket
 import subprocess
-import tempfile
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any
 
 from web3 import Web3
-from web3.contract.contract import Contract
-from web3.exceptions import TransactionNotFound
 
 from .models import (
-    SimulationResult,
-    SimulationRequest,
     AnvilProcessInfo,
     AssetChange,
     CallTrace,
     EventLog,
-    RiskLevel,
+    SimulationRequest,
+    SimulationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,7 +75,7 @@ class AnvilScreener:
     def __init__(
         self,
         fork_url: str,
-        fork_block: Optional[int] = None,
+        fork_block: int | None = None,
         anvil_path: str = "anvil",
         base_port: int = 8545,
         timeout: int = 30,
@@ -104,9 +96,9 @@ class AnvilScreener:
         self.base_port = base_port
         self.timeout = timeout
 
-        self._process: Optional[subprocess.Popen] = None
-        self._process_info: Optional[AnvilProcessInfo] = None
-        self._w3: Optional[Web3] = None
+        self._process: subprocess.Popen | None = None
+        self._process_info: AnvilProcessInfo | None = None
+        self._w3: Web3 | None = None
 
     @property
     def is_running(self) -> bool:
@@ -135,6 +127,8 @@ class AnvilScreener:
             AnvilProcessInfo: 进程信息
         """
         if self.is_running:
+            if self._process_info is None:
+                raise RuntimeError("Process is running but process_info is None")
             return self._process_info
 
         port = find_free_port(self.base_port)
@@ -178,7 +172,9 @@ class AnvilScreener:
         if self.fork_block:
             block_number = self.fork_block
         else:
-            block_number = self._w3.eth.block_number
+            if self._w3 is None:
+                raise RuntimeError("Web3 instance is None")
+            block_number = self.w3.eth.block_number
 
         self._process_info = AnvilProcessInfo(
             pid=self._process.pid,
@@ -193,8 +189,10 @@ class AnvilScreener:
 
     def _wait_for_ready(self, rpc_url: str, max_wait: int = 10) -> None:
         """等待 Anvil 就绪"""
-        import httpx
         import time
+
+        import httpx
+
         start = datetime.now()
 
         while (datetime.now() - start).seconds < max_wait:
@@ -255,7 +253,7 @@ class AnvilScreener:
             self.start()
 
         # 记录执行前状态
-        snapshot_id = self._w3.eth.snapshot()
+        snapshot_id = self.w3.eth.snapshot()
 
         try:
             # 获取执行前余额
@@ -272,9 +270,7 @@ class AnvilScreener:
             )
 
             # 计算资产变动
-            asset_changes = self._calculate_asset_changes(
-                before_balances, after_balances
-            )
+            asset_changes = self._calculate_asset_changes(before_balances, after_balances)
 
             # 解析调用栈
             call_traces = self._parse_traces(trace)
@@ -285,7 +281,7 @@ class AnvilScreener:
             # 构建结果
             result = SimulationResult(
                 chain_id=request.chain_id,
-                block_number=self._process_info.fork_block,
+                block_number=self._process_info.fork_block if self._process_info else 0,
                 tx_from=request.tx_from,
                 tx_to=request.tx_to,
                 tx_value=request.tx_value,
@@ -296,6 +292,8 @@ class AnvilScreener:
                 asset_changes=asset_changes,
                 call_traces=call_traces,
                 events=events,
+                error_message=None,
+                intent_analysis=None,
             )
 
             # 检查异常行为
@@ -305,11 +303,9 @@ class AnvilScreener:
 
         finally:
             # 恢复快照
-            self._w3.eth.revert(snapshot_id)
+            self.w3.eth.revert(snapshot_id)
 
-    async def _get_balances(
-        self, *addresses: str
-    ) -> Dict[Tuple[str, str], int]:
+    async def _get_balances(self, *addresses: str) -> dict[tuple[str, str], int]:
         """
         获取地址的余额
 
@@ -325,7 +321,7 @@ class AnvilScreener:
             addr = Web3.to_checksum_address(addr)
 
             # ETH 余额
-            balances[(addr, "0x" + "0" * 40)] = self._w3.eth.get_balance(addr)
+            balances[(addr, "0x" + "0" * 40)] = self.w3.eth.get_balance(addr)
 
             # TODO: 在实际执行中，需要根据 event logs 获取涉及的 ERC20 token
             # 这里简化处理，只处理 ETH
@@ -334,9 +330,9 @@ class AnvilScreener:
 
     def _calculate_asset_changes(
         self,
-        before: Dict[Tuple[str, str], int],
-        after: Dict[Tuple[str, str], int],
-    ) -> List[AssetChange]:
+        before: dict[tuple[str, str], int],
+        after: dict[tuple[str, str], int],
+    ) -> list[AssetChange]:
         """计算资产变动"""
         changes = []
         all_keys = set(before.keys()) | set(after.keys())
@@ -356,6 +352,7 @@ class AnvilScreener:
                         balance_before=str(before_balance),
                         balance_after=str(after_balance),
                         change_amount=str(change),
+                        change_usd=None,
                     )
                 )
 
@@ -363,7 +360,7 @@ class AnvilScreener:
 
     async def _execute_transaction(
         self, request: SimulationRequest
-    ) -> Tuple[str, Dict[str, Any], Any]:
+    ) -> tuple[str, dict[str, Any], Any]:
         """
         执行交易
 
@@ -377,30 +374,26 @@ class AnvilScreener:
             "value": request.tx_value,
             "data": request.tx_data,
             "gas": request.gas_limit,
-            "chainId": self._w3.eth.chain_id,
+            "chainId": self.w3.eth.chain_id,
         }
 
         # 获取 nonce
-        tx["nonce"] = self._w3.eth.get_transaction_count(request.tx_from)
+        tx["nonce"] = self.w3.eth.get_transaction_count(request.tx_from)
 
         # 使用Impersonated Account发送交易
-        self._w3.provider.make_request(
-            "anvil_impersonateAccount", [request.tx_from]
-        )
+        self.w3.provider.make_request("anvil_impersonateAccount", [request.tx_from])
 
         try:
             # 发送交易
-            tx_hash = self._w3.eth.send_transaction(tx)
+            tx_hash = self.w3.eth.send_transaction(tx)
 
             # 等待交易确认
-            receipt = self._w3.eth.wait_for_transaction_receipt(
-                tx_hash, timeout=self.timeout
-            )
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=self.timeout)
 
             # 获取 trace（如果支持）
             trace = None
             try:
-                trace = self._w3.provider.make_request(
+                trace = self.w3.provider.make_request(
                     "debug_traceTransaction",
                     [tx_hash.hex(), {"trace": []}],
                 )
@@ -410,11 +403,9 @@ class AnvilScreener:
             return tx_hash.hex(), receipt, trace
 
         finally:
-            self._w3.provider.make_request(
-                "anvil_stopImpersonatingAccount", [request.tx_from]
-            )
+            self.w3.provider.make_request("anvil_stopImpersonatingAccount", [request.tx_from])
 
-    def _parse_traces(self, trace_result: Dict[str, Any]) -> List[CallTrace]:
+    def _parse_traces(self, trace_result: dict[str, Any]) -> list[CallTrace]:
         """解析调用跟踪"""
         traces = []
 
@@ -441,7 +432,7 @@ class AnvilScreener:
 
         return traces
 
-    def _parse_events(self, receipt: Dict[str, Any]) -> List[EventLog]:
+    def _parse_events(self, receipt: dict[str, Any]) -> list[EventLog]:
         """解析事件日志"""
         events = []
 
@@ -449,8 +440,12 @@ class AnvilScreener:
             events.append(
                 EventLog(
                     address=log.get("address", ""),
-                    topics=[log.get("topic0", ""), log.get("topic1", ""),
-                            log.get("topic2", ""), log.get("topic3", "")],
+                    topics=[
+                        log.get("topic0", ""),
+                        log.get("topic1", ""),
+                        log.get("topic2", ""),
+                        log.get("topic3", ""),
+                    ],
                     data=log.get("data", "0x"),
                     log_index=log.get("logIndex", 0),
                 )
@@ -458,9 +453,7 @@ class AnvilScreener:
 
         return events
 
-    def _detect_anomalies(
-        self, request: SimulationRequest, result: SimulationResult
-    ) -> List[str]:
+    def _detect_anomalies(self, request: SimulationRequest, result: SimulationResult) -> list[str]:
         """
         检测异常行为
 
@@ -481,9 +474,7 @@ class AnvilScreener:
                 change_int = int(change.change_amount)
                 # 如果转出的 ETH 超过 tx_value
                 if change_int < -int(request.tx_value):
-                    anomalies.append(
-                        f"检测到异常 ETH 转出: {abs(change_int) / 1e18:.4f} ETH"
-                    )
+                    anomalies.append(f"检测到异常 ETH 转出: {abs(change_int) / 1e18:.4f} ETH")
 
         # 检查调用深度（可能是重入攻击）
         if result.call_traces:
@@ -512,7 +503,7 @@ class AnvilScreenerPool:
         self.pool_size = pool_size
         self.anvil_path = anvil_path
         self.base_port = base_port
-        self._pool: List[AnvilScreener] = []
+        self._pool: list[AnvilScreener] = []
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> AnvilScreener:

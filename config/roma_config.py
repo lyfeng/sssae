@@ -4,18 +4,18 @@ ROMA Configuration Loader
 支持从YAML文件加载ROMA配置，并提供环境变量替换。
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     from omegaconf import OmegaConf
+
     HAS_OMEGACONF = True
 except ImportError:
     HAS_OMEGACONF = False
 
-from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ROMAConfig:
     """
 
     # 默认配置
-    DEFAULTS: Dict[str, Any] = {
+    DEFAULTS: dict[str, Any] = {
         "pipeline": {
             "enabled_agents": ["perception", "executor", "reflection", "aggregator"],
             "skip_planner": True,
@@ -63,15 +63,15 @@ class ROMAConfig:
             profile: 配置环境 (dev, prod)
         """
         self.profile = profile
-        self._config: Optional[Dict[str, Any]] = None
+        self._config: dict[str, Any] | None = None
 
-    def load(self) -> Dict[str, Any]:
+    def load(self) -> dict[str, Any]:
         """加载配置"""
         if self._config is None:
             self._config = self._load_config()
         return self._config
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """加载配置文件"""
         # 尝试从YAML文件加载
         if HAS_OMEGACONF:
@@ -82,7 +82,7 @@ class ROMAConfig:
         # 回退到默认配置 + 环境变量
         return self._load_from_env()
 
-    def _load_yaml_config(self) -> Optional[Dict[str, Any]]:
+    def _load_yaml_config(self) -> dict[str, Any] | None:
         """从YAML文件加载配置"""
         config_dir = Path(__file__).parent / "profiles"
         config_file = config_dir / f"{self.profile}.yaml"
@@ -115,12 +115,13 @@ class ROMAConfig:
         else:
             return config
 
-    def _merge_with_defaults(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_with_defaults(self, config: dict[str, Any]) -> dict[str, Any]:
         """与默认配置合并"""
         import copy
+
         merged = copy.deepcopy(self.DEFAULTS)
 
-        def deep_update(base: Dict, update: Dict) -> Dict:
+        def deep_update(base: dict, update: dict) -> dict:
             """递归更新字典"""
             for key, value in update.items():
                 if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -131,9 +132,10 @@ class ROMAConfig:
 
         return deep_update(merged, config)
 
-    def _load_from_env(self) -> Dict[str, Any]:
+    def _load_from_env(self) -> dict[str, Any]:
         """从环境变量加载配置"""
         import copy
+
         config = copy.deepcopy(self.DEFAULTS)
 
         # LLM配置
@@ -172,7 +174,7 @@ class ROMAConfig:
 
 
 # 全局配置实例
-_configs: Dict[str, ROMAConfig] = {}
+_configs: dict[str, ROMAConfig] = {}
 
 
 def get_roma_config(profile: str = "dev") -> ROMAConfig:
@@ -190,7 +192,7 @@ def get_roma_config(profile: str = "dev") -> ROMAConfig:
     return _configs[profile]
 
 
-def load_profile(profile: str = "dev") -> Dict[str, Any]:
+def load_profile(profile: str = "dev") -> dict[str, Any]:
     """
     加载指定profile的配置
 

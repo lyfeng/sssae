@@ -5,15 +5,12 @@ AnvilToolkit - EVM 模拟工具集
 提供EVM交易模拟、状态查询、trace分析等功能。
 """
 
-import asyncio
 import logging
-from typing import Any, Dict, Optional
-from datetime import datetime
+from typing import Any
 
-from .base import BaseToolkit, ToolkitResult
 from ..simulation.anvil_screener import AnvilScreener, AnvilScreenerPool
 from ..simulation.models import SimulationRequest, SimulationResult
-
+from .base import BaseToolkit, ToolkitResult
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +42,8 @@ class AnvilToolkit(BaseToolkit):
         self.pool_size = self.config.get("pool_size", 3)
 
         # 初始化进程池
-        self._pool: Optional[AnvilScreenerPool] = None
-        self._screener: Optional[AnvilScreener] = None
+        self._pool: AnvilScreenerPool | None = None
+        self._screener: AnvilScreener | None = None
 
     async def _get_screener(self) -> AnvilScreener:
         """获取或创建AnvilScreener实例"""
@@ -62,7 +59,7 @@ class AnvilToolkit(BaseToolkit):
                 self._screener.start()
         return self._screener
 
-    async def validate_input(self, **kwargs) -> tuple[bool, Optional[str]]:
+    async def validate_input(self, **kwargs) -> tuple[bool, str | None]:
         """验证输入参数"""
         action = kwargs.get("action")
         if action == "simulate_tx":
@@ -74,9 +71,9 @@ class AnvilToolkit(BaseToolkit):
             tx_from = kwargs.get("tx_from", "")
             tx_to = kwargs.get("tx_to", "")
             if not tx_from.startswith("0x") or len(tx_from) != 42:
-                return False, f"无效的tx_from地址格式"
+                return False, "无效的tx_from地址格式"
             if not tx_to.startswith("0x") or len(tx_to) != 42:
-                return False, f"无效的tx_to地址格式"
+                return False, "无效的tx_to地址格式"
         return True, None
 
     async def execute(self, action: str = "simulate_tx", **kwargs) -> ToolkitResult:
@@ -115,8 +112,8 @@ class AnvilToolkit(BaseToolkit):
         tx_value: str = "0",
         tx_data: str = "0x",
         chain_id: int = 1,
-        fork_block: Optional[int] = None,
-        **kwargs
+        fork_block: int | None = None,
+        **kwargs,
     ) -> ToolkitResult:
         """
         模拟交易执行
@@ -155,6 +152,7 @@ class AnvilToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,  # 会被__call__覆盖
+                error=None,
                 data={
                     "transaction": {
                         "from": result.tx_from,
@@ -185,7 +183,9 @@ class AnvilToolkit(BaseToolkit):
                             "from": t.from_address,
                             "to": t.to_address,
                             "value": t.value,
-                            "input": t.input_data[:100] + "..." if len(t.input_data) > 100 else t.input_data,
+                            "input": t.input_data[:100] + "..."
+                            if len(t.input_data) > 100
+                            else t.input_data,
                             "gas_used": t.gas_used,
                             "error": t.error,
                         }
@@ -203,7 +203,9 @@ class AnvilToolkit(BaseToolkit):
                 },
                 metadata={
                     "fork_url": screener.fork_url,
-                    "fork_block": screener._process_info.fork_block if screener._process_info else None,
+                    "fork_block": screener._process_info.fork_block
+                    if screener._process_info
+                    else None,
                     "rpc_url": screener.rpc_url if screener.is_running else None,
                 },
             )
@@ -223,10 +225,7 @@ class AnvilToolkit(BaseToolkit):
             )
 
     async def _handle_get_balance(
-        self,
-        address: str,
-        token_address: Optional[str] = None,
-        **kwargs
+        self, address: str, token_address: str | None = None, **kwargs
     ) -> ToolkitResult:
         """
         查询余额
@@ -248,6 +247,7 @@ class AnvilToolkit(BaseToolkit):
                     success=True,
                     tool_name=self.tool_name,
                     execution_time=0.0,
+                    error=None,
                     data={
                         "address": address,
                         "token": "ETH",
@@ -262,6 +262,7 @@ class AnvilToolkit(BaseToolkit):
                     tool_name=self.tool_name,
                     execution_time=0.0,
                     error="ERC20余额查询暂未实现",
+                    data={},
                 )
 
         except Exception as e:
@@ -270,13 +271,10 @@ class AnvilToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
-    async def _handle_get_code(
-        self,
-        address: str,
-        **kwargs
-    ) -> ToolkitResult:
+    async def _handle_get_code(self, address: str, **kwargs) -> ToolkitResult:
         """
         查询合约代码
 
@@ -296,6 +294,7 @@ class AnvilToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "address": address,
                     "is_contract": is_contract,
@@ -310,6 +309,7 @@ class AnvilToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
     async def _handle_start(self, **kwargs) -> ToolkitResult:
@@ -322,10 +322,13 @@ class AnvilToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "status": "running",
                     "rpc_url": screener.rpc_url,
-                    "fork_block": screener._process_info.fork_block if screener._process_info else None,
+                    "fork_block": screener._process_info.fork_block
+                    if screener._process_info
+                    else None,
                 },
             )
 
@@ -335,6 +338,7 @@ class AnvilToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
     async def _handle_stop(self, **kwargs) -> ToolkitResult:
@@ -348,6 +352,7 @@ class AnvilToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={"status": "stopped"},
             )
 
@@ -357,9 +362,10 @@ class AnvilToolkit(BaseToolkit):
                 tool_name=self.tool_name,
                 execution_time=0.0,
                 error=str(e),
+                data={},
             )
 
-    def get_schema(self) -> Dict[str, Any]:
+    def get_schema(self) -> dict[str, Any]:
         """获取工具Schema"""
         return {
             "name": self.tool_name,

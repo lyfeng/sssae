@@ -5,22 +5,24 @@ Base Toolkit Interface for ROMA
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class ToolkitResult(BaseModel):
     """Toolkit执行结果的标准格式"""
+
     success: bool = Field(..., description="执行是否成功")
     tool_name: str = Field(..., description="工具名称")
     execution_time: float = Field(..., description="执行时间（秒）")
-    data: Dict[str, Any] = Field(default_factory=dict, description="返回数据")
-    error: Optional[str] = Field(None, description="错误信息")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    data: dict[str, Any] = Field(default_factory=dict, description="返回数据")
+    error: str | None = Field(None, description="错误信息")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="执行时间戳")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典格式，便于ROMA Executor处理"""
         return self.model_dump()
 
@@ -35,7 +37,7 @@ class BaseToolkit(ABC):
     tool_name: str = "base_toolkit"
     description: str = "Base toolkit for ROMA"
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         初始化Toolkit
 
@@ -62,7 +64,7 @@ class BaseToolkit(ABC):
         """
         raise NotImplementedError
 
-    async def validate_input(self, **kwargs) -> tuple[bool, Optional[str]]:
+    async def validate_input(self, **kwargs) -> tuple[bool, str | None]:
         """
         验证输入参数
 
@@ -74,7 +76,15 @@ class BaseToolkit(ABC):
         """
         return True, None
 
-    def get_schema(self) -> Dict[str, Any]:
+    async def cleanup(self) -> None:
+        """
+        清理资源
+
+        子类可以重写此方法来释放资源
+        """
+        pass
+
+    def get_schema(self) -> dict[str, Any]:
         """
         获取工具的参数schema
 
@@ -93,6 +103,7 @@ class BaseToolkit(ABC):
     async def __call__(self, **kwargs) -> ToolkitResult:
         """使Toolkit可被直接调用"""
         import time
+
         start = time.time()
 
         # 验证输入
@@ -127,21 +138,21 @@ class ToolkitRegistry:
     """
 
     def __init__(self):
-        self._tools: Dict[str, BaseToolkit] = {}
+        self._tools: dict[str, BaseToolkit] = {}
 
     def register(self, tool: BaseToolkit) -> None:
         """注册一个Toolkit"""
         self._tools[tool.tool_name] = tool
 
-    def get(self, name: str) -> Optional[BaseToolkit]:
+    def get(self, name: str) -> BaseToolkit | None:
         """获取指定名称的Toolkit"""
         return self._tools.get(name)
 
-    def list_tools(self) -> List[str]:
+    def list_tools(self) -> list[str]:
         """列出所有已注册的Toolkit名称"""
         return list(self._tools.keys())
 
-    def get_all_schemas(self) -> List[Dict[str, Any]]:
+    def get_all_schemas(self) -> list[dict[str, Any]]:
         """获取所有Toolkit的Schema"""
         return [tool.get_schema() for tool in self._tools.values()]
 

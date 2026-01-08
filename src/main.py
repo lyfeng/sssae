@@ -8,25 +8,24 @@ Sentient Security Sandbox Execution Agent
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import List
 
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import uvicorn
 
-from .config import get_settings
 from .api.openai_compat import (
+    SIMULATE_TX_TOOL,
     ChatCompletionRequest,
     ChatCompletionResponse,
     SSSEAHandler,
-    SIMULATE_TX_TOOL,
 )
-
+from .config import get_settings
 
 # =============================================================================
 # Logging Configuration
 # =============================================================================
+
 
 def setup_logging(level: str = "INFO"):
     """配置日志"""
@@ -40,6 +39,7 @@ def setup_logging(level: str = "INFO"):
 # =============================================================================
 # Lifespan Management
 # =============================================================================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -231,6 +231,8 @@ async def simulate_transaction(request: Request):
         # 获取 ROMA Pipeline
         handler: SSSEAHandler = app.state.handler
         pipeline = handler._roma_pipeline
+        if pipeline is None:
+            raise HTTPException(status_code=500, detail="ROMA Pipeline is not initialized")
 
         # 构建交易数据
         tx_data = {
@@ -289,6 +291,7 @@ async def not_implemented_handler(request: Request, exc: NotImplementedError):
 # =============================================================================
 # Main
 # =============================================================================
+
 
 def main():
     """主入口"""

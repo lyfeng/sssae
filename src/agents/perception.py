@@ -5,9 +5,9 @@ Perception Agent - 感知层Agent
 """
 
 import logging
-from typing import Any, Dict, Optional
-from .base import BaseAgent, AgentResult, AgentContext
+from typing import Any
 
+from .base import AgentContext, AgentResult, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,11 @@ class PerceptionAgent(BaseAgent):
             context.metadata.update(result_data)
 
             return AgentResult(
+                agent_name=self.agent_name,
                 success=True,
                 execution_time=0.0,
                 data=result_data,
+                error=None,
                 next_step=self._determine_next_step(task_type, complexity),
                 confidence=0.95,
             )
@@ -74,13 +76,15 @@ class PerceptionAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Perception Agent执行失败: {e}", exc_info=True)
             return AgentResult(
+                agent_name=self.agent_name,
                 success=False,
                 execution_time=0.0,
                 error=f"输入解析失败: {str(e)}",
+                next_step=None,
                 confidence=0.0,
             )
 
-    async def _parse_user_intent(self, intent: str) -> Dict[str, Any]:
+    async def _parse_user_intent(self, intent: str) -> dict[str, Any]:
         """
         解析用户意图
 
@@ -109,11 +113,12 @@ class PerceptionAgent(BaseAgent):
 
         # 提取金额
         import re
-        amount_pattern = r'(\d+(?:\.\d+)?)\s*(?:eth|usdc|usdt|dai|wbtc)?'
+
+        amount_pattern = r"(\d+(?:\.\d+)?)\s*(?:eth|usdc|usdt|dai|wbtc)?"
         amounts = re.findall(amount_pattern, intent_lower, re.IGNORECASE)
 
         # 提取滑点容忍度
-        slippage_pattern = r'(?:slippage|slip)\s*(?:of\s*)?(\d+(?:\.\d+)?)%?'
+        slippage_pattern = r"(?:slippage|slip)\s*(?:of\s*)?(\d+(?:\.\d+)?)%?"
         slippage_match = re.search(slippage_pattern, intent_lower)
         slippage = float(slippage_match.group(1)) / 100 if slippage_match else None
 
@@ -124,7 +129,7 @@ class PerceptionAgent(BaseAgent):
             "raw_intent": intent,
         }
 
-    async def _validate_tx_data(self, tx_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _validate_tx_data(self, tx_data: dict[str, Any]) -> dict[str, Any]:
         """
         验证交易数据
 
@@ -185,11 +190,7 @@ class PerceptionAgent(BaseAgent):
                 return "0"
         return "0"
 
-    async def _extract_key_params(
-        self,
-        intent: str,
-        tx_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def _extract_key_params(self, intent: str, tx_data: dict[str, Any]) -> dict[str, Any]:
         """提取关键参数"""
         return {
             "chain_id": tx_data.get("chain_id", 1),
@@ -201,9 +202,7 @@ class PerceptionAgent(BaseAgent):
         }
 
     async def _classify_task(
-        self,
-        context: AgentContext,
-        params: Dict[str, Any]
+        self, context: AgentContext, params: dict[str, Any]
     ) -> tuple[str, str]:
         """
         分类任务类型和复杂度

@@ -5,12 +5,10 @@ ForensicsToolkit - 取证分析工具集
 """
 
 import logging
-import re
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any
 
 from .base import BaseToolkit, ToolkitResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +70,7 @@ class ForensicsToolkit(BaseToolkit):
 
     tool_name = "forensics_analyzer"
     description = (
-        "交易取证分析工具，用于检测攻击模式、分析调用链、"
-        "识别异常行为，生成详细的安全报告。"
+        "交易取证分析工具，用于检测攻击模式、分析调用链、识别异常行为，生成详细的安全报告。"
     )
 
     def _initialize(self) -> None:
@@ -81,7 +78,7 @@ class ForensicsToolkit(BaseToolkit):
         self.max_trace_depth = self.config.get("max_trace_depth", 50)
         self.enable_ml_detection = self.config.get("enable_ml_detection", False)
 
-    async def validate_input(self, **kwargs) -> tuple[bool, Optional[str]]:
+    async def validate_input(self, **kwargs) -> tuple[bool, str | None]:
         """验证输入参数"""
         action = kwargs.get("action")
         if action in ["analyze_trace", "detect_attack"]:
@@ -118,11 +115,11 @@ class ForensicsToolkit(BaseToolkit):
 
     async def _handle_analyze_trace(
         self,
-        call_traces: List[Dict[str, Any]],
+        call_traces: list[dict[str, Any]],
         tx_from: str,
         tx_to: str,
         tx_value: str = "0",
-        **kwargs
+        **kwargs,
     ) -> ToolkitResult:
         """
         分析交易trace
@@ -141,6 +138,7 @@ class ForensicsToolkit(BaseToolkit):
                 success=True,
                 tool_name=self.tool_name,
                 execution_time=0.0,
+                error=None,
                 data={
                     "summary": "无调用trace",
                     "call_count": 0,
@@ -172,40 +170,49 @@ class ForensicsToolkit(BaseToolkit):
         findings = []
 
         if max_depth > 20:
-            findings.append({
-                "severity": "warning",
-                "type": "deep_call_stack",
-                "message": f"调用深度过深({max_depth})，可能存在递归或重入风险",
-            })
+            findings.append(
+                {
+                    "severity": "warning",
+                    "type": "deep_call_stack",
+                    "message": f"调用深度过深({max_depth})，可能存在递归或重入风险",
+                }
+            )
 
         if dangerous_calls:
-            findings.append({
-                "severity": "warning",
-                "type": "dangerous_function",
-                "message": f"检测到{len(dangerous_calls)}个危险函数调用",
-                "calls": dangerous_calls[:5],
-            })
+            findings.append(
+                {
+                    "severity": "warning",
+                    "type": "dangerous_function",
+                    "message": f"检测到{len(dangerous_calls)}个危险函数调用",
+                    "calls": dangerous_calls[:5],
+                }
+            )
 
         if reentrancy_risk:
-            findings.append({
-                "severity": "high",
-                "type": "reentrancy",
-                "message": "检测到可能的重入攻击模式",
-                "details": reentrancy_risk,
-            })
+            findings.append(
+                {
+                    "severity": "high",
+                    "type": "reentrancy",
+                    "message": "检测到可能的重入攻击模式",
+                    "details": reentrancy_risk,
+                }
+            )
 
         if delegatecall_targets:
-            findings.append({
-                "severity": "high",
-                "type": "delegatecall",
-                "message": f"检测到{len(delegatecall_targets)}个delegatecall调用",
-                "targets": delegatecall_targets,
-            })
+            findings.append(
+                {
+                    "severity": "high",
+                    "type": "delegatecall",
+                    "message": f"检测到{len(delegatecall_targets)}个delegatecall调用",
+                    "targets": delegatecall_targets,
+                }
+            )
 
         return ToolkitResult(
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "summary": f"分析完成: {call_count}个调用, 最大深度{max_depth}",
                 "call_count": call_count,
@@ -219,10 +226,10 @@ class ForensicsToolkit(BaseToolkit):
 
     async def _handle_detect_attack(
         self,
-        call_traces: List[Dict[str, Any]],
-        asset_changes: List[Dict[str, Any]],
+        call_traces: list[dict[str, Any]],
+        asset_changes: list[dict[str, Any]],
         user_intent: str,
-        **kwargs
+        **kwargs,
     ) -> ToolkitResult:
         """
         检测攻击模式
@@ -240,52 +247,62 @@ class ForensicsToolkit(BaseToolkit):
         # 1. 检测重入攻击
         reentrancy = await self._check_reentrancy_attack(call_traces)
         if reentrancy:
-            detected_attacks.append({
-                "type": "reentrancy",
-                "severity": "critical",
-                "confidence": reentrancy["confidence"],
-                "details": reentrancy,
-            })
+            detected_attacks.append(
+                {
+                    "type": "reentrancy",
+                    "severity": "critical",
+                    "confidence": reentrancy["confidence"],
+                    "details": reentrancy,
+                }
+            )
 
         # 2. 检测授权陷阱
         approval_trap = await self._check_approval_trap(call_traces, asset_changes, user_intent)
         if approval_trap:
-            detected_attacks.append({
-                "type": "approval_trap",
-                "severity": "critical",
-                "confidence": approval_trap["confidence"],
-                "details": approval_trap,
-            })
+            detected_attacks.append(
+                {
+                    "type": "approval_trap",
+                    "severity": "critical",
+                    "confidence": approval_trap["confidence"],
+                    "details": approval_trap,
+                }
+            )
 
         # 3. 检测钓鱼攻击
         phishing = await self._check_phishing_attack(call_traces, asset_changes, user_intent)
         if phishing:
-            detected_attacks.append({
-                "type": "phishing",
-                "severity": "critical",
-                "confidence": phishing["confidence"],
-                "details": phishing,
-            })
+            detected_attacks.append(
+                {
+                    "type": "phishing",
+                    "severity": "critical",
+                    "confidence": phishing["confidence"],
+                    "details": phishing,
+                }
+            )
 
         # 4. 检测资金抽离
         drain = await self._check_drain_attack(call_traces, asset_changes)
         if drain:
-            detected_attacks.append({
-                "type": "drain",
-                "severity": "critical",
-                "confidence": drain["confidence"],
-                "details": drain,
-            })
+            detected_attacks.append(
+                {
+                    "type": "drain",
+                    "severity": "critical",
+                    "confidence": drain["confidence"],
+                    "details": drain,
+                }
+            )
 
         # 5. 检测闪电贷攻击
         flashloan = await self._check_flashloan_attack(call_traces)
         if flashloan:
-            detected_attacks.append({
-                "type": "flashloan",
-                "severity": "warning",
-                "confidence": flashloan["confidence"],
-                "details": flashloan,
-            })
+            detected_attacks.append(
+                {
+                    "type": "flashloan",
+                    "severity": "warning",
+                    "confidence": flashloan["confidence"],
+                    "details": flashloan,
+                }
+            )
 
         # 计算总体风险评分
         risk_score = self._calculate_risk_score(detected_attacks)
@@ -294,6 +311,7 @@ class ForensicsToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "attacks_detected": len(detected_attacks),
                 "risk_score": risk_score,
@@ -304,11 +322,7 @@ class ForensicsToolkit(BaseToolkit):
         )
 
     async def _handle_check_risk_patterns(
-        self,
-        tx_to: str,
-        tx_data: str,
-        call_traces: Optional[List[Dict[str, Any]]] = None,
-        **kwargs
+        self, tx_to: str, tx_data: str, call_traces: list[dict[str, Any]] | None = None, **kwargs
     ) -> ToolkitResult:
         """
         检查风险模式
@@ -326,43 +340,52 @@ class ForensicsToolkit(BaseToolkit):
         # 检查函数选择器
         selector = self._extract_selector(tx_data)
         if selector in DANGEROUS_SELECTORS:
-            risks.append({
-                "type": "dangerous_selector",
-                "selector": selector,
-                "function": DANGEROUS_SELECTORS[selector],
-                "severity": "medium",
-            })
+            risks.append(
+                {
+                    "type": "dangerous_selector",
+                    "selector": selector,
+                    "function": DANGEROUS_SELECTORS[selector],
+                    "severity": "medium",
+                }
+            )
 
         # 检查无限授权
         if "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" in tx_data.lower():
-            risks.append({
-                "type": "unlimited_approval",
-                "severity": "high",
-                "message": "检测到无限授权(uint256 max)",
-            })
+            risks.append(
+                {
+                    "type": "unlimited_approval",
+                    "severity": "high",
+                    "message": "检测到无限授权(uint256 max)",
+                }
+            )
 
         # 检查已知钓鱼合约
         if self._is_known_scam_contract(tx_to):
-            risks.append({
-                "type": "known_scam_contract",
-                "severity": "critical",
-                "address": tx_to,
-            })
+            risks.append(
+                {
+                    "type": "known_scam_contract",
+                    "severity": "critical",
+                    "address": tx_to,
+                }
+            )
 
         # 检查调用深度
         if call_traces:
             max_depth = max((t.get("depth", 0) for t in call_traces), default=0)
             if max_depth > 30:
-                risks.append({
-                    "type": "deep_call_stack",
-                    "severity": "warning",
-                    "depth": max_depth,
-                })
+                risks.append(
+                    {
+                        "type": "deep_call_stack",
+                        "severity": "warning",
+                        "depth": max_depth,
+                    }
+                )
 
         return ToolkitResult(
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "selector": selector,
                 "risks": risks,
@@ -372,9 +395,9 @@ class ForensicsToolkit(BaseToolkit):
 
     async def _handle_replay_analysis(
         self,
-        original_result: Dict[str, Any],
-        override_params: Optional[Dict[str, Any]] = None,
-        **kwargs
+        original_result: dict[str, Any],
+        override_params: dict[str, Any] | None = None,
+        **kwargs,
     ) -> ToolkitResult:
         """
         回放分析（使用state override）
@@ -392,6 +415,7 @@ class ForensicsToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={
                 "original_success": original_result.get("success", False),
                 "replay_suggestions": [
@@ -405,10 +429,7 @@ class ForensicsToolkit(BaseToolkit):
         )
 
     async def _handle_generate_report(
-        self,
-        analysis_results: Dict[str, Any],
-        tx_info: Dict[str, Any],
-        **kwargs
+        self, analysis_results: dict[str, Any], tx_info: dict[str, Any], **kwargs
     ) -> ToolkitResult:
         """
         生成安全报告
@@ -438,12 +459,13 @@ class ForensicsToolkit(BaseToolkit):
             success=True,
             tool_name=self.tool_name,
             execution_time=0.0,
+            error=None,
             data={"report": report},
         )
 
     # ==================== 辅助方法 ====================
 
-    def _analyze_call_chain(self, traces: List[Dict]) -> List[str]:
+    def _analyze_call_chain(self, traces: list[dict]) -> list[str]:
         """分析调用链"""
         chain = []
         for trace in traces[:30]:
@@ -453,35 +475,39 @@ class ForensicsToolkit(BaseToolkit):
             chain.append(f"{'  ' * depth}{from_addr} -> {to_addr}")
         return chain
 
-    def _detect_dangerous_calls(self, traces: List[Dict]) -> List[Dict]:
+    def _detect_dangerous_calls(self, traces: list[dict]) -> list[dict]:
         """检测危险函数调用"""
         dangerous = []
         for trace in traces:
             input_data = trace.get("input_data", trace.get("input", ""))
             selector = self._extract_selector(input_data)
             if selector in DANGEROUS_SELECTORS:
-                dangerous.append({
-                    "selector": selector,
-                    "function": DANGEROUS_SELECTORS[selector],
-                    "from": trace.get("from_address", "")[:10],
-                    "to": trace.get("to_address", "")[:10],
-                })
+                dangerous.append(
+                    {
+                        "selector": selector,
+                        "function": DANGEROUS_SELECTORS[selector],
+                        "from": trace.get("from_address", "")[:10],
+                        "to": trace.get("to_address", "")[:10],
+                    }
+                )
         return dangerous
 
-    def _analyze_eth_flows(self, traces: List[Dict], initiator: str) -> List[Dict]:
+    def _analyze_eth_flows(self, traces: list[dict], initiator: str) -> list[dict]:
         """分析ETH流向"""
         flows = []
         for trace in traces:
             value = trace.get("value", "0")
             if int(value, 16) if value.startswith("0x") else int(value) > 0:
-                flows.append({
-                    "from": trace.get("from_address", "")[:10],
-                    "to": trace.get("to_address", "")[:10],
-                    "value": value,
-                })
+                flows.append(
+                    {
+                        "from": trace.get("from_address", "")[:10],
+                        "to": trace.get("to_address", "")[:10],
+                        "value": value,
+                    }
+                )
         return flows
 
-    def _detect_reentrancy(self, traces: List[Dict]) -> Optional[Dict]:
+    def _detect_reentrancy(self, traces: list[dict]) -> dict | None:
         """检测重入模式"""
         if not traces:
             return None
@@ -506,11 +532,10 @@ class ForensicsToolkit(BaseToolkit):
 
         return None
 
-    def _detect_delegatecall(self, traces: List[Dict]) -> List[str]:
+    def _detect_delegatecall(self, traces: list[dict]) -> list[str]:
         """检测delegatecall调用"""
         targets = []
         for trace in traces:
-            input_data = trace.get("input_data", "")
             # delegatecall的selector通常不会在普通交易中出现
             # 这里需要更精确的检测
             if "delegatecall" in str(trace).lower():
@@ -532,7 +557,7 @@ class ForensicsToolkit(BaseToolkit):
 
     # ==================== 攻击检测 ====================
 
-    async def _check_reentrancy_attack(self, traces: List[Dict]) -> Optional[Dict]:
+    async def _check_reentrancy_attack(self, traces: list[dict]) -> dict | None:
         """检查重入攻击"""
         reentrancy = self._detect_reentrancy(traces)
         if reentrancy:
@@ -543,11 +568,8 @@ class ForensicsToolkit(BaseToolkit):
         return None
 
     async def _check_approval_trap(
-        self,
-        traces: List[Dict],
-        changes: List[Dict],
-        intent: str
-    ) -> Optional[Dict]:
+        self, traces: list[dict], changes: list[dict], intent: str
+    ) -> dict | None:
         """检查授权陷阱"""
         # 检测：approve后立即transfer
         for trace in traces:
@@ -564,11 +586,8 @@ class ForensicsToolkit(BaseToolkit):
         return None
 
     async def _check_phishing_attack(
-        self,
-        traces: List[Dict],
-        changes: List[Dict],
-        intent: str
-    ) -> Optional[Dict]:
+        self, traces: list[dict], changes: list[dict], intent: str
+    ) -> dict | None:
         """检查钓鱼攻击"""
         # 检测资金流向非预期地址
         for change in changes:
@@ -582,18 +601,10 @@ class ForensicsToolkit(BaseToolkit):
                     }
         return None
 
-    async def _check_drain_attack(
-        self,
-        traces: List[Dict],
-        changes: List[Dict]
-    ) -> Optional[Dict]:
+    async def _check_drain_attack(self, traces: list[dict], changes: list[dict]) -> dict | None:
         """检查资金抽离"""
         # 检测余额是否归零
-        total_out = sum(
-            int(c.get("change", 0))
-            for c in changes
-            if int(c.get("change", 0)) < 0
-        )
+        total_out = sum(int(c.get("change", 0)) for c in changes if int(c.get("change", 0)) < 0)
         if abs(total_out) > int(1e18):  # 超过1 ETH
             return {
                 "confidence": 0.7,
@@ -601,7 +612,7 @@ class ForensicsToolkit(BaseToolkit):
             }
         return None
 
-    async def _check_flashloan_attack(self, traces: List[Dict]) -> Optional[Dict]:
+    async def _check_flashloan_attack(self, traces: list[dict]) -> dict | None:
         """检查闪电贷攻击"""
         for trace in traces:
             input_data = trace.get("input_data", "").lower()
@@ -621,7 +632,7 @@ class ForensicsToolkit(BaseToolkit):
         }
         return address.lower() in [c.lower() for c in official_contracts]
 
-    def _calculate_risk_score(self, attacks: List[Dict]) -> float:
+    def _calculate_risk_score(self, attacks: list[dict]) -> float:
         """计算风险评分"""
         if not attacks:
             return 0.0
@@ -651,7 +662,7 @@ class ForensicsToolkit(BaseToolkit):
         else:
             return "SAFE"
 
-    def _generate_attack_summary(self, attacks: List[Dict]) -> str:
+    def _generate_attack_summary(self, attacks: list[dict]) -> str:
         """生成攻击摘要"""
         if not attacks:
             return "未检测到攻击模式"
@@ -659,7 +670,7 @@ class ForensicsToolkit(BaseToolkit):
         types = [a["type"] for a in attacks]
         return f"检测到 {len(attacks)} 种攻击模式: {', '.join(types)}"
 
-    def get_schema(self) -> Dict[str, Any]:
+    def get_schema(self) -> dict[str, Any]:
         """获取工具Schema"""
         return {
             "name": self.tool_name,
@@ -674,7 +685,7 @@ class ForensicsToolkit(BaseToolkit):
                             "detect_attack",
                             "check_risk_patterns",
                             "replay_analysis",
-                            "generate_report"
+                            "generate_report",
                         ],
                         "description": "操作类型",
                     },

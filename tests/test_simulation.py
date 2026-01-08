@@ -6,10 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from src.simulation.models import (
+    AssetChange,
+    RiskLevel,
     SimulationRequest,
     SimulationResult,
-    RiskLevel,
-    AssetChange,
 )
 
 

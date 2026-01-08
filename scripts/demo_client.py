@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import httpx
 
-
 # =============================================================================
 # Demo Scenarios
 # =============================================================================
@@ -67,6 +66,7 @@ SCENARIOS = {
 # =============================================================================
 # Demo Client
 # =============================================================================
+
 
 class SSSEAClient:
     """SSSEA 客户端"""
@@ -123,14 +123,16 @@ class SSSEAClient:
                     "type": "function",
                     "function": {
                         "name": "simulate_tx",
-                        "arguments": json.dumps({
-                            "user_intent": user_intent,
-                            "chain_id": chain_id,
-                            "tx_from": tx_from,
-                            "tx_to": tx_to,
-                            "tx_value": tx_value,
-                            "tx_data": tx_data,
-                        }),
+                        "arguments": json.dumps(
+                            {
+                                "user_intent": user_intent,
+                                "chain_id": chain_id,
+                                "tx_from": tx_from,
+                                "tx_to": tx_to,
+                                "tx_value": tx_value,
+                                "tx_data": tx_data,
+                            }
+                        ),
                     },
                 }
             ],
@@ -165,6 +167,7 @@ class SSSEAClient:
 # =============================================================================
 # Demo Runner
 # =============================================================================
+
 
 class DemoRunner:
     """Demo 运行器"""
@@ -251,13 +254,13 @@ class DemoRunner:
         attestation = result.get("attestation", "")
 
         # 打印结果
-        print(f"\n    审计结果:")
+        print("\n    审计结果:")
         self.print_result("风险等级", verdict)
         self.print_result("置信度", f"{confidence:.0%}")
         self.print_result("摘要", summary)
 
         if anomalies:
-            print(f"\n    检测到的问题:")
+            print("\n    检测到的问题:")
             for a in anomalies:
                 print(f"      - {a}")
 
@@ -279,6 +282,7 @@ class DemoRunner:
 # =============================================================================
 # Main
 # =============================================================================
+
 
 async def main():
     """主函数"""

@@ -6,9 +6,9 @@ Executor Agent - 执行层Agent
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
-from .base import BaseAgent, AgentResult, AgentContext
+from typing import Any
 
+from .base import AgentContext, AgentResult, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +49,11 @@ class ExecutorAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Executor Agent执行失败: {e}", exc_info=True)
             return AgentResult(
+                agent_name=self.agent_name,
                 success=False,
                 execution_time=0.0,
                 error=f"任务执行失败: {str(e)}",
+                next_step=None,
                 confidence=0.0,
             )
 
@@ -65,16 +67,16 @@ class ExecutorAgent(BaseAgent):
         # 1. 启动Anvil
         if self.has_toolkit("anvil_simulator"):
             anvil_tool = self.get_toolkit("anvil_simulator")
+            assert anvil_tool is not None
             start_result = await anvil_tool(action="start")
             results["start"] = start_result.to_dict()
 
         # 2. 模拟交易
         if self.has_toolkit("anvil_simulator"):
             anvil_tool = self.get_toolkit("anvil_simulator")
+            assert anvil_tool is not None
             sim_result = await anvil_tool(
-                action="simulate_tx",
-                user_intent=context.user_intent,
-                **params
+                action="simulate_tx", user_intent=context.user_intent, **params
             )
             results["simulation"] = sim_result.to_dict()
             context.simulation_result = sim_result.to_dict()
@@ -82,6 +84,7 @@ class ExecutorAgent(BaseAgent):
         # 3. 分析trace
         if results["simulation"].get("success") and self.has_toolkit("forensics_analyzer"):
             forensics_tool = self.get_toolkit("forensics_analyzer")
+            assert forensics_tool is not None
             trace_result = await forensics_tool(
                 action="analyze_trace",
                 call_traces=results["simulation"]["data"].get("call_traces", []),
@@ -94,6 +97,7 @@ class ExecutorAgent(BaseAgent):
         # 4. 检测攻击
         if results["simulation"].get("success") and self.has_toolkit("forensics_analyzer"):
             forensics_tool = self.get_toolkit("forensics_analyzer")
+            assert forensics_tool is not None
             attack_result = await forensics_tool(
                 action="detect_attack",
                 call_traces=results["simulation"]["data"].get("call_traces", []),
@@ -103,18 +107,16 @@ class ExecutorAgent(BaseAgent):
             results["attack_detection"] = attack_result.to_dict()
 
         return AgentResult(
+            agent_name=self.agent_name,
             success=results.get("simulation", {}).get("success", True),
             execution_time=0.0,
             data=results,
+            error=None,
             next_step="reflection",
             confidence=0.85,
         )
 
-    async def _execute_plan(
-        self,
-        context: AgentContext,
-        plan: Dict[str, Any]
-    ) -> AgentResult:
+    async def _execute_plan(self, context: AgentContext, plan: dict[str, Any]) -> AgentResult:
         """按照执行计划执行子任务"""
         results = {}
         tasks = plan["execution_plan"]["tasks"]
@@ -145,27 +147,23 @@ class ExecutorAgent(BaseAgent):
         overall_success = success_count > len(results) / 2
 
         return AgentResult(
+            agent_name=self.agent_name,
             success=overall_success,
             execution_time=0.0,
             data=results,
+            error=None,
             next_step="reflection" if overall_success else "aggregator",
             confidence=success_count / len(results) if results else 0.0,
         )
 
     async def _execute_parallel(
-        self,
-        context: AgentContext,
-        all_tasks: List[Dict],
-        task_ids: List[str]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, all_tasks: list[dict], task_ids: list[str]
+    ) -> dict[str, Any]:
         """并行执行一组任务"""
         task_map = {t["id"]: t for t in all_tasks}
 
         # 创建协程
-        coroutines = [
-            self._execute_task(context, task_map[task_id], {})
-            for task_id in task_ids
-        ]
+        coroutines = [self._execute_task(context, task_map[task_id], {}) for task_id in task_ids]
 
         # 并行执行
         results_list = await asyncio.gather(*coroutines, return_exceptions=True)
@@ -181,11 +179,8 @@ class ExecutorAgent(BaseAgent):
         return results
 
     async def _execute_task(
-        self,
-        context: AgentContext,
-        task: Dict[str, Any],
-        previous_results: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, task: dict[str, Any], previous_results: dict[str, Any]
+    ) -> dict[str, Any]:
         """执行单个子任务"""
         tool_name = task["tool"]
         action = task["action"]

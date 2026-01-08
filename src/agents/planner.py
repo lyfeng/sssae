@@ -5,9 +5,9 @@ Planner Agent - 规划层Agent
 """
 
 import logging
-from typing import Any, Dict, List, Optional
-from .base import BaseAgent, AgentResult, AgentContext
+from typing import Any
 
+from .base import AgentContext, AgentResult, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,11 @@ class PlannerAgent(BaseAgent):
             context.metadata["plan"] = result_data
 
             return AgentResult(
+                agent_name=self.agent_name,
                 success=True,
                 execution_time=0.0,
                 data=result_data,
+                error=None,
                 next_step="executor",
                 confidence=0.9,
             )
@@ -71,13 +73,15 @@ class PlannerAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Planner Agent执行失败: {e}", exc_info=True)
             return AgentResult(
+                agent_name=self.agent_name,
                 success=False,
                 execution_time=0.0,
                 error=f"任务规划失败: {str(e)}",
+                next_step=None,
                 confidence=0.0,
             )
 
-    async def _analyze_task(self, context: AgentContext) -> Dict[str, Any]:
+    async def _analyze_task(self, context: AgentContext) -> dict[str, Any]:
         """分析任务特征"""
         tx_data = context.metadata.get("validated_tx_data", {})
         intent_analysis = context.metadata.get("intent_analysis", {})
@@ -91,91 +95,95 @@ class PlannerAgent(BaseAgent):
         }
 
         # 判断是否需要特殊处理
-        analysis["needs_deep_analysis"] = (
-            analysis["calldata_size"] > 200 or
-            analysis["has_value"]
-        )
+        analysis["needs_deep_analysis"] = analysis["calldata_size"] > 200 or analysis["has_value"]
 
         return analysis
 
     async def _generate_subtasks(
-        self,
-        context: AgentContext,
-        analysis: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, context: AgentContext, analysis: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """生成子任务列表"""
         subtasks = []
 
         # 子任务1: 合约静态分析
         if analysis["has_calldata"]:
-            subtasks.append({
-                "id": "static_analysis",
-                "name": "静态合约分析",
-                "tool": "forensics_analyzer",
-                "action": "check_risk_patterns",
-                "params": {
-                    "tx_to": analysis["target_contract"],
-                    "tx_data": context.metadata.get("validated_tx_data", {}).get("tx_data", "0x"),
-                },
-                "priority": "high",
-            })
+            subtasks.append(
+                {
+                    "id": "static_analysis",
+                    "name": "静态合约分析",
+                    "tool": "forensics_analyzer",
+                    "action": "check_risk_patterns",
+                    "params": {
+                        "tx_to": analysis["target_contract"],
+                        "tx_data": context.metadata.get("validated_tx_data", {}).get(
+                            "tx_data", "0x"
+                        ),
+                    },
+                    "priority": "high",
+                }
+            )
 
         # 子任务2: 环境准备
-        subtasks.append({
-            "id": "setup_environment",
-            "name": "准备模拟环境",
-            "tool": "anvil_simulator",
-            "action": "start",
-            "params": {},
-            "priority": "high",
-        })
+        subtasks.append(
+            {
+                "id": "setup_environment",
+                "name": "准备模拟环境",
+                "tool": "anvil_simulator",
+                "action": "start",
+                "params": {},
+                "priority": "high",
+            }
+        )
 
         # 子任务3: 交易模拟
-        subtasks.append({
-            "id": "simulate_tx",
-            "name": "执行交易模拟",
-            "tool": "anvil_simulator",
-            "action": "simulate_tx",
-            "params": {
-                "user_intent": context.user_intent,
-                **context.metadata.get("key_params", {}),
-            },
-            "priority": "critical",
-            "depends_on": ["setup_environment"],
-        })
+        subtasks.append(
+            {
+                "id": "simulate_tx",
+                "name": "执行交易模拟",
+                "tool": "anvil_simulator",
+                "action": "simulate_tx",
+                "params": {
+                    "user_intent": context.user_intent,
+                    **context.metadata.get("key_params", {}),
+                },
+                "priority": "critical",
+                "depends_on": ["setup_environment"],
+            }
+        )
 
         # 子任务4: Trace分析
-        subtasks.append({
-            "id": "trace_analysis",
-            "name": "分析调用链",
-            "tool": "forensics_analyzer",
-            "action": "analyze_trace",
-            "params": {
-                "tx_from": context.metadata.get("key_params", {}).get("tx_from"),
-                "tx_to": context.metadata.get("key_params", {}).get("tx_to"),
-                "tx_value": context.metadata.get("key_params", {}).get("tx_value"),
-            },
-            "priority": "medium",
-            "depends_on": ["simulate_tx"],
-        })
+        subtasks.append(
+            {
+                "id": "trace_analysis",
+                "name": "分析调用链",
+                "tool": "forensics_analyzer",
+                "action": "analyze_trace",
+                "params": {
+                    "tx_from": context.metadata.get("key_params", {}).get("tx_from"),
+                    "tx_to": context.metadata.get("key_params", {}).get("tx_to"),
+                    "tx_value": context.metadata.get("key_params", {}).get("tx_value"),
+                },
+                "priority": "medium",
+                "depends_on": ["simulate_tx"],
+            }
+        )
 
         # 子任务5: 攻击检测
-        subtasks.append({
-            "id": "attack_detection",
-            "name": "检测攻击模式",
-            "tool": "forensics_analyzer",
-            "action": "detect_attack",
-            "params": {},
-            "priority": "high",
-            "depends_on": ["simulate_tx", "trace_analysis"],
-        })
+        subtasks.append(
+            {
+                "id": "attack_detection",
+                "name": "检测攻击模式",
+                "tool": "forensics_analyzer",
+                "action": "detect_attack",
+                "params": {},
+                "priority": "high",
+                "depends_on": ["simulate_tx", "trace_analysis"],
+            }
+        )
 
         return subtasks
 
-    async def _build_execution_dag(
-        self,
-        subtasks: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    async def _build_execution_dag(self, subtasks: list[dict[str, Any]]) -> dict[str, Any]:
         """构建执行DAG"""
         # 按依赖关系排序
         ordered = []
@@ -184,10 +192,7 @@ class PlannerAgent(BaseAgent):
 
         while remaining:
             # 找到没有未完成依赖的任务
-            ready = [
-                t for t in remaining
-                if all(d in executed for d in t.get("depends_on", []))
-            ]
+            ready = [t for t in remaining if all(d in executed for d in t.get("depends_on", []))]
 
             if not ready:
                 # 循环依赖或错误，按优先级取一个
@@ -204,7 +209,7 @@ class PlannerAgent(BaseAgent):
             "parallel_groups": self._group_parallel_tasks(ordered),
         }
 
-    def _group_parallel_tasks(self, tasks: List[Dict]) -> List[List[str]]:
+    def _group_parallel_tasks(self, tasks: list[dict]) -> list[list[str]]:
         """将任务分组为可并行的组"""
         groups = []
         current_group = []
@@ -231,7 +236,7 @@ class PlannerAgent(BaseAgent):
         order = {"critical": 3, "high": 2, "medium": 1, "low": 0}
         return order.get(priority, 0)
 
-    async def _estimate_resources(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+    async def _estimate_resources(self, plan: dict[str, Any]) -> dict[str, Any]:
         """估算资源需求"""
         return {
             "estimated_time_seconds": len(plan["tasks"]) * 5,

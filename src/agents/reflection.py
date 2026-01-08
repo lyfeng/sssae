@@ -5,9 +5,9 @@ Reflection Agent - 反思层Agent
 """
 
 import logging
-from typing import Any, Dict, List, Optional
-from .base import BaseAgent, AgentResult, AgentContext
+from typing import Any
 
+from .base import AgentContext, AgentResult, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,9 @@ class ReflectionAgent(BaseAgent):
     agent_name = "reflection"
     description = "分析结果并决定是否需要重试"
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, toolkits: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, config: dict[str, Any] | None = None, toolkits: dict[str, Any] | None = None
+    ):
         super().__init__(config, toolkits)
         self.max_retries = config.get("max_retries", 3) if config else 3
         self.retry_count = 0
@@ -73,9 +75,11 @@ class ReflectionAgent(BaseAgent):
             context.metadata["reflection"] = result_data
 
             return AgentResult(
+                agent_name=self.agent_name,
                 success=quality_assessment.get("overall_success", True),
                 execution_time=0.0,
                 data=result_data,
+                error=None,
                 next_step=retry_decision.get("next_step", "aggregator"),
                 confidence=quality_assessment.get("confidence", 0.7),
             )
@@ -83,13 +87,15 @@ class ReflectionAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Reflection Agent执行失败: {e}", exc_info=True)
             return AgentResult(
+                agent_name=self.agent_name,
                 success=False,
                 execution_time=0.0,
                 error=f"反思分析失败: {str(e)}",
+                next_step=None,
                 confidence=0.0,
             )
 
-    async def _assess_quality(self, context: AgentContext) -> Dict[str, Any]:
+    async def _assess_quality(self, context: AgentContext) -> dict[str, Any]:
         """评估执行结果质量"""
         assessment = {
             "overall_success": True,
@@ -113,17 +119,17 @@ class ReflectionAgent(BaseAgent):
                 assessment["confidence"] = 0.9  # 高风险但明确
 
         # 检查trace分析
-        trace_issues = sim_result.get("data", {}).get("findings", []) if isinstance(sim_result, dict) else []
+        trace_issues = (
+            sim_result.get("data", {}).get("findings", []) if isinstance(sim_result, dict) else []
+        )
         if trace_issues:
             assessment["trace_issues"] = trace_issues
 
         return assessment
 
     async def _detect_anomalies(
-        self,
-        context: AgentContext,
-        quality: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, context: AgentContext, quality: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """检测异常"""
         anomalies = []
 
@@ -134,31 +140,33 @@ class ReflectionAgent(BaseAgent):
         if isinstance(sim_result, dict):
             execution = sim_result.get("data", {}).get("execution", {})
             if execution.get("success") is False:
-                anomalies.append({
-                    "type": "transaction_failure",
-                    "severity": "high",
-                    "message": execution.get("error", "交易执行失败"),
-                })
+                anomalies.append(
+                    {
+                        "type": "transaction_failure",
+                        "severity": "high",
+                        "message": execution.get("error", "交易执行失败"),
+                    }
+                )
 
             # 检查资产异常变动
             asset_changes = sim_result.get("data", {}).get("asset_changes", [])
             for change in asset_changes:
                 amount = int(change.get("change", 0))
                 if amount < -int(1e18):  # 超过1 ETH转出
-                    anomalies.append({
-                        "type": "unexpected_outflow",
-                        "severity": "critical",
-                        "message": f"异常大额转出: {abs(amount) / 1e18} ETH",
-                        "token": change.get("token"),
-                    })
+                    anomalies.append(
+                        {
+                            "type": "unexpected_outflow",
+                            "severity": "critical",
+                            "message": f"异常大额转出: {abs(amount) / 1e18} ETH",
+                            "token": change.get("token"),
+                        }
+                    )
 
         return anomalies
 
     async def _analyze_failures(
-        self,
-        context: AgentContext,
-        quality: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, quality: dict[str, Any]
+    ) -> dict[str, Any]:
         """分析失败原因"""
         analysis = {
             "has_failures": False,
@@ -181,11 +189,8 @@ class ReflectionAgent(BaseAgent):
         return analysis
 
     async def _make_retry_decision(
-        self,
-        context: AgentContext,
-        quality: Dict[str, Any],
-        failure: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, context: AgentContext, quality: dict[str, Any], failure: dict[str, Any]
+    ) -> dict[str, Any]:
         """决定是否需要重试"""
         decision = {
             "should_retry": False,
@@ -208,7 +213,7 @@ class ReflectionAgent(BaseAgent):
 
         return decision
 
-    def _select_retry_strategy(self, failure: Dict[str, Any]) -> Dict[str, Any]:
+    def _select_retry_strategy(self, failure: dict[str, Any]) -> dict[str, Any]:
         """选择重试策略"""
         failure_types = failure.get("failure_types", [])
 
@@ -232,10 +237,8 @@ class ReflectionAgent(BaseAgent):
             return {"type": "simple_retry"}
 
     async def _generate_improvements(
-        self,
-        context: AgentContext,
-        failure: Dict[str, Any]
-    ) -> List[str]:
+        self, context: AgentContext, failure: dict[str, Any]
+    ) -> list[str]:
         """生成改进建议"""
         improvements = []
 
