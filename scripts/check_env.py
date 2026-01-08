@@ -179,7 +179,8 @@ def main():
     print_header("5. 项目结构检查")
     required_dirs = [
         "src/simulation",
-        "src/reasoning",
+        "src/agents",
+        "src/toolkits",
         "src/attestation",
         "src/api",
     ]

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, alias="API_PORT")
     api_reload: bool = Field(default=True, alias="API_RELOAD")
 
-    # LLM Configuration
+    # LLM Configuration (for ROMA Pipeline)
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_base_url: str = Field(
         default="https://api.openai.com/v1",
@@ -35,14 +35,7 @@ class Settings(BaseSettings):
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
-    # Reasoning Engine Configuration
-    reasoning_engine: str = Field(
-        default="roma",
-        alias="REASONING_ENGINE"
-    )  # Options: "roma", "openai", "mock"
-
     # ROMA Configuration
-    roma_enabled: bool = Field(default=True, alias="ROMA_ENABLED")
     roma_provider: str = Field(
         default="openrouter",
         alias="ROMA_PROVIDER"
